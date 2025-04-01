@@ -1,0 +1,9 @@
+flask
+easyocr
+torch
+torchvision
+torchaudio
+spacy
+transformers
+sentencepiece
+protobuf
