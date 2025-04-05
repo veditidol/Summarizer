@@ -1,18 +1,19 @@
 from flask import Flask, request, jsonify
+from concurrent.futures import ThreadPoolExecutor
 import easyocr
 import re
 import spacy
 from transformers import pipeline
 
-# Initialize Flask app
 app = Flask(__name__)
 
-# Load spaCy model and summarization model
+executor = ThreadPoolExecutor(max_workers=4)
+
 nlp = spacy.load("en_core_web_lg")
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+
 reader = easyocr.Reader(['en'])
 
-# Function to extract text data from images
 def extract_text(img_path):
     results = reader.readtext(img_path)
     extracted_text = ''
@@ -20,20 +21,17 @@ def extract_text(img_path):
         extracted_text += text + '\n'
     return extracted_text
 
-# Function to extract names from text
 def extract_names(text):
     if len(text.split()) <= 2:
         text = f"Person {text} went to the store."
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
 
-# Function to clean the extracted text
 def clean_text(text):
     cleaned_text = re.sub(r'[^a-zA-Z0-9\s.,!?\'-]', '', text)
     cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
     return cleaned_text.strip()
 
-# Function to maintain the chat structure
 def maintain_chat_structure(extracted_text):
     time_pattern = re.compile(r'(\d{1,2}[.:-]\d{2}(?:\s?[APMapm]{2})?)')
     date_pattern = re.compile(r'(\d{1,2}(?:st|nd|rd|th)?\s+\w+\s+\d{4})')
@@ -73,7 +71,7 @@ def maintain_chat_structure(extracted_text):
 
     return conversation
 
-# Function to summarize the conversation
+
 def summarize_conversation(conversation):
     detailed_summary = []
 
@@ -90,34 +88,30 @@ def summarize_conversation(conversation):
 
     return " ".join(detailed_summary)
 
-# Flask route to process the image
+def process_image_and_summarize(image_path):
+    extracted_text = extract_text(image_path)
+    conversation = maintain_chat_structure(extracted_text)
+    return summarize_conversation(conversation)
+
+
 @app.route('/summarize', methods=['POST'])
 def summarize():
     try:
         if 'image' not in request.files:
             return jsonify({"error": "No image file provided"}), 400
 
-        # Save the uploaded image
+        
         image = request.files['image']
         image_path = image.filename
         image.save(image_path)
 
-        # Extract text from the image
-        extracted_text = extract_text(image_path)
+        future = executor.submit(process_image_and_summarize, image_path)
+        summarized_content = future.result()
 
-        # Maintain chat structure
-        conversation = maintain_chat_structure(extracted_text)
-
-        # Summarize the conversation
-        summarized_content = summarize_conversation(conversation)
-
-        # Return the summarized conversation as JSON
         return jsonify({"summary": summarized_content})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Run the Flask app
 if __name__ == '__main__':
     app.run(debug=True)
-
