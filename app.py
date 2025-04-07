@@ -4,8 +4,10 @@ import easyocr
 import re
 import spacy
 from transformers import pipeline
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app) 
 
 executor = ThreadPoolExecutor(max_workers=4)
 
